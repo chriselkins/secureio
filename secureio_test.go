@@ -13,8 +13,21 @@ func runningAsRoot() bool {
 }
 
 func supportsOTmpfile() bool {
-	dir := os.TempDir()
-	fd, err := unix.Open(dir, unix.O_TMPFILE|unix.O_RDWR, 0600)
+	dir, err := os.Getwd()
+	if err != nil {
+		return false
+	}
+	testDir := filepath.Join(dir, "testdata-otmpfile-check")
+	os.MkdirAll(testDir, 0700)
+	defer os.RemoveAll(testDir)
+
+	dirFd, err := unix.Open(testDir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return false
+	}
+	defer unix.Close(dirFd)
+
+	fd, err := unix.Openat(dirFd, "", unix.O_TMPFILE|unix.O_RDWR, 0600)
 	if err == nil {
 		unix.Close(fd)
 		return true
@@ -22,11 +35,26 @@ func supportsOTmpfile() bool {
 	return false
 }
 
+func makeTestDir(t *testing.T) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	testDir := filepath.Join(cwd, "testdata", t.Name())
+	if err := os.MkdirAll(testDir, 0700); err != nil {
+		t.Fatalf("failed to create test dir: %v", err)
+	}
+	t.Cleanup(func() {
+		os.RemoveAll(testDir)
+	})
+	return testDir
+}
+
 func TestSecureAtomicWrite(t *testing.T) {
 	if !supportsOTmpfile() {
 		t.Skip("Skipping test: O_TMPFILE not supported on this system")
 	}
-	dir := t.TempDir()
+	dir := makeTestDir(t)
 	path := filepath.Join(dir, "testfile.txt")
 	content := []byte("hello world")
 
@@ -50,7 +78,7 @@ func TestSecureAtomicWriteRoot(t *testing.T) {
 	if !supportsOTmpfile() {
 		t.Skip("Skipping test: O_TMPFILE not supported on this system")
 	}
-	dir := t.TempDir()
+	dir := makeTestDir(t)
 	path := filepath.Join(dir, "rootfile.txt")
 	content := []byte("secure data")
 
@@ -74,7 +102,7 @@ func TestSecureAtomicWriteRootStrict(t *testing.T) {
 	if !supportsOTmpfile() {
 		t.Skip("Skipping test: O_TMPFILE not supported on this system")
 	}
-	dir := t.TempDir()
+	dir := makeTestDir(t)
 	path := filepath.Join(dir, "strictfile.txt")
 	content := []byte("strict secure data")
 
@@ -95,7 +123,7 @@ func TestSecureAtomicWriteWithCustomOptions(t *testing.T) {
 	if !supportsOTmpfile() {
 		t.Skip("Skipping test: O_TMPFILE not supported on this system")
 	}
-	dir := t.TempDir()
+	dir := makeTestDir(t)
 	path := filepath.Join(dir, "customfile.txt")
 	content := []byte("owned content")
 	opts := WriteOptions{Perm: 0644, UID: os.Getuid(), GID: os.Getgid(), Sync: true, VerifyAll: false, NoCrossDevice: true}
@@ -125,7 +153,7 @@ func TestSecureAtomicWriteSkipSync(t *testing.T) {
 	if !supportsOTmpfile() {
 		t.Skip("Skipping test: O_TMPFILE not supported on this system")
 	}
-	dir := t.TempDir()
+	dir := makeTestDir(t)
 	path := filepath.Join(dir, "nonsyncfile.txt")
 	content := []byte("fast write")
 	opts := WriteOptions{Perm: 0600, UID: -1, GID: -1, Sync: false, VerifyAll: false, NoCrossDevice: true}
@@ -147,7 +175,7 @@ func TestSecureAtomicWriteWithInterruptSimulated(t *testing.T) {
 	if !supportsOTmpfile() {
 		t.Skip("Skipping test: O_TMPFILE not supported on this system")
 	}
-	dir := t.TempDir()
+	dir := makeTestDir(t)
 	path := filepath.Join(dir, "interruptfile.txt")
 	tmpPath := filepath.Join(dir, ".interruptfile.txt.tmp")
 	content := []byte("final correct content")
@@ -174,7 +202,7 @@ func TestSecureAtomicWriteWithInterruptSimulated(t *testing.T) {
 }
 
 func TestVerifyDirectorySecureFailsOnBadOwnership(t *testing.T) {
-	dir := t.TempDir()
+	dir := makeTestDir(t)
 	path := filepath.Join(dir, "badperm")
 	os.Mkdir(path, 0777) // world-writable without sticky bit
 
@@ -191,7 +219,7 @@ func TestSecureAtomicWriteRootStrictVerification(t *testing.T) {
 	if !supportsOTmpfile() {
 		t.Skip("Skipping test: O_TMPFILE not supported on this system")
 	}
-	dir := t.TempDir()
+	dir := makeTestDir(t)
 	subdir := filepath.Join(dir, "subdir")
 	os.Mkdir(subdir, 0755)
 	path := filepath.Join(subdir, "strictfile.txt")

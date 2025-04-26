@@ -7,6 +7,13 @@
 
 ---
 
+> **Note**:  
+> `secureio` automatically uses advanced Linux features like `openat2` and `O_TMPFILE` when available to provide maximum security, atomicity, and resistance to symlink, magiclink, and mountpoint attacks.  
+> If unsupported (such as inside WSL 2 or on older kernels), it transparently falls back to secure alternatives like `openat` and temp file + rename methods.  
+> See [How It Works](#-how-it-works) for more technical details.
+
+---
+
 ## ✨ Features
 
 - **Atomic writes** using `O_TMPFILE` when available (no visible temp file)
